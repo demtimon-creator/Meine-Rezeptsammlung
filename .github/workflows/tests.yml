@@ -17,3 +17,6 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test
+      - name: Live isolated drawer verification
+        if: github.ref == 'refs/heads/feature/simple-shared-drawer'
+        run: node tests/drawer-live.cjs
