@@ -1,3 +1,4 @@
+const deadline=setTimeout(()=>{console.error('Browser test exceeded 120 seconds');process.exit(1)},120000);deadline.unref();
 const {chromium,webkit}=require('playwright');
 const fs=require('fs'),path=require('path'),assert=require('assert');
 const root=path.resolve(__dirname,'..'),base='https://demtimon-creator.github.io/Meine-Rezeptsammlung/';
