@@ -1,4 +1,4 @@
-// Separate, NOT DEPLOYED test extension. Does not write to any database table.
+// Ingredient extraction endpoint; authenticates existing device tokens. Does not write to any database table.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { loadRecipe } from './extract.mjs';
 const client=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
