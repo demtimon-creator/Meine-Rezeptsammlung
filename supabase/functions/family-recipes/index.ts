@@ -3,6 +3,8 @@ const client=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_S
 const cors={'Access-Control-Allow-Origin':'https://demtimon-creator.github.io','Access-Control-Allow-Headers':'content-type,authorization,apikey','Access-Control-Allow-Methods':'POST,OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 async function hash(s:string){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('')}
+async function passwordHash(password:string,salt:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);return Array.from(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:210000,hash:'SHA-256'},key,256)),b=>b.toString(16).padStart(2,'0')).join('')}
+const loginName=(v:unknown)=>String(v||'').trim().toLowerCase().replace(/\s+/g,'-');
 function reply(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:cors})}
 Deno.serve(async req=>{
 if(req.method==='OPTIONS')return new Response(null,{headers:cors});
@@ -11,6 +13,19 @@ try{
 const origin=req.headers.get('origin');if(origin&&origin!=='https://demtimon-creator.github.io')return reply({error:'Origin not allowed'},403);
 if(Number(req.headers.get('content-length')||0)>100000)return reply({error:'Anfrage zu groß'},413);
 const raw=await req.text();if(raw.length>100000)return reply({error:'Anfrage zu groß'},413);const data=JSON.parse(raw);const action=String(data.action||'');
+if(action==='drawer-login'||action==='drawer-register'){
+const name=loginName(data.loginName),password=String(data.password||'');if(!/^[a-z0-9][a-z0-9_-]{2,59}$/.test(name)||password.length<12||password.length>256)return reply({error:'Bitte einen Namen mit mindestens 3 Zeichen (Buchstaben/Zahlen) und ein Passwort mit mindestens 12 Zeichen verwenden.'},400);
+if(action==='drawer-login'){
+const q=await client.rpc('recipe_claim_login',{p_name:name});if(q.error)throw q.error;const row=q.data?.[0];if(!row||await passwordHash(password,row.salt)!==row.password_hash)return reply({error:'Name oder Passwort stimmt nicht, oder zu viele Versuche. Nach mehreren Fehlversuchen bitte 15 Minuten warten.'},403);
+const reset=await client.from('recipe_drawer_logins').update({attempts:0}).eq('login_name',name);if(reset.error)throw reset.error;
+const deviceToken=random();const dv=await client.from('recipe_devices').insert({token_hash:await hash(deviceToken),household_id:row.household_id});if(dv.error)throw dv.error;return reply({deviceToken,householdId:row.household_id,loginName:name});
+}
+let householdId='';const prior=String(data.deviceToken||'');if(prior){const q=await client.from('recipe_devices').select('household_id').eq('token_hash',await hash(prior)).maybeSingle();if(!q.data)return reply({error:'Bisheriger Zugang ungültig. Bitte zuerst anmelden.'},401);householdId=q.data.household_id;const existing=await client.from('recipe_drawer_logins').select('login_name').eq('household_id',householdId).limit(1);if(existing.data?.length)return reply({error:'Für diese Schublade gibt es bereits einen gemeinsamen Zugang. Bitte damit anmelden.'},409)}
+const taken=await client.from('recipe_drawer_logins').select('login_name').eq('login_name',name).maybeSingle();if(taken.data)return reply({error:'Dieser Schubladenname ist schon vergeben. Bitte anmelden oder einen anderen Namen wählen.'},409);
+const fresh=!householdId;if(fresh){householdId=crypto.randomUUID();const q=await client.from('recipe_households').insert({id:householdId,name:'Unsere Rezeptsammlung',created_by:null});if(q.error)throw q.error}
+const salt=random(),password_hash=await passwordHash(password,salt),q=await client.from('recipe_drawer_logins').insert({login_name:name,household_id:householdId,salt,password_hash});if(q.error){if(fresh)await client.from('recipe_households').delete().eq('id',householdId);return reply({error:'Zugang konnte nicht erstellt werden. Bitte Namen prüfen.'},409)}
+const deviceToken=prior||random();if(!prior){const dv=await client.from('recipe_devices').insert({token_hash:await hash(deviceToken),household_id:householdId});if(dv.error)throw dv.error}return reply({deviceToken,householdId,loginName:name});
+}
 if(action==='create'){
 const familyCode=random(),deviceToken=random(),hid=crypto.randomUUID();
 const a=await client.from('recipe_households').insert({id:hid,name:'Unsere Rezeptsammlung',created_by:null});
@@ -36,10 +51,13 @@ return reply({deviceToken});
 const token=String(data.deviceToken||'');if(!/^[a-f0-9]{64}$/.test(token))return reply({error:'Gerät nicht verbunden'},401);
 const {data:device}=await client.from('recipe_devices').select('household_id').eq('token_hash',await hash(token)).maybeSingle();if(!device)return reply({error:'Zugang ungültig'},401);
 const family=device.household_id;
+if(action==='drawer-merge'){
+const targetToken=String(data.targetToken||'');if(!/^[a-f0-9]{64}$/.test(targetToken))return reply({error:'Zielzugang fehlt'},403);const q=await client.from('recipe_devices').select('household_id').eq('token_hash',await hash(targetToken)).maybeSingle();if(!q.data)return reply({error:'Zielzugang ungültig'},403);const merge=await client.rpc('recipe_merge_drawers',{p_source:family,p_target:q.data.household_id});if(merge.error)throw merge.error;return reply({householdId:q.data.household_id});
+}
 if(action==='invite'){
 const invite=random(),expiresAt=new Date(Date.now()+600000).toISOString();const q=await client.from('recipe_family_codes').insert({code_hash:await hash(invite),household_id:family,expires_at:expiresAt});if(q.error)throw q.error;return reply({invite,expiresAt,householdId:family});
 }
-if(action==='list'){const q=await client.from('shared_recipes').select('*').eq('household_id',family).order('updated_at',{ascending:false});if(q.error)throw q.error;const shop=await client.from('recipe_shopping').select('id,text,done,updated_at').eq('household_id',family).order('updated_at');if(shop.error)throw shop.error;return reply({recipes:q.data,items:shop.data,householdId:family})}
+if(action==='list'){const q=await client.from('shared_recipes').select('*').eq('household_id',family).order('updated_at',{ascending:false});if(q.error)throw q.error;const shop=await client.from('recipe_shopping').select('id,text,done,updated_at').eq('household_id',family).order('updated_at');if(shop.error)throw shop.error;const login=await client.from('recipe_drawer_logins').select('login_name').eq('household_id',family).limit(1);return reply({recipes:q.data,items:shop.data,householdId:family,loginName:login.data?.[0]?.login_name||null})}
 if(action==='delete'){const id=String(data.id||'');const q=await client.from('shared_recipes').delete().eq('id',id).eq('household_id',family);if(q.error)throw q.error;return reply({ok:true})}
 
 if(action==='rotate'){const familyCode=random();const q=await client.from('recipe_family_codes').update({active:false}).eq('household_id',family);if(q.error)throw q.error;const n=await client.from('recipe_family_codes').insert({code_hash:await hash(familyCode),household_id:family});if(n.error)throw n.error;return reply({familyCode})}
