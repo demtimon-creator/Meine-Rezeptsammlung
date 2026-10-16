@@ -17,6 +17,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test
+      - name: Live Chefkoch import verification
+        if: github.ref == 'refs/heads/feature/chefkoch-ingredients-test'
+        run: node tests/chefkoch-live.cjs
       - name: Live isolated drawer verification
         if: github.ref == 'refs/heads/feature/simple-shared-drawer'
         run: node tests/drawer-live.cjs
