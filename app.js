@@ -31,7 +31,7 @@ function download(name,txt,type){let a=document.createElement('a');a.href=URL.cr
 function backup(){download('meine-rezepte-sicherung.json',JSON.stringify({recipes,items,version:2},null,2),'application/json')}
 async function restoreFile(f){if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.recipes)||d.recipes.some(r=>!r||typeof r.name!=='string'||!r.name.trim()))throw Error('Ungültige Rezeptliste');if(!confirm('Sicherung mit vorhandenen Daten zusammenführen? Bestehende Rezepte bleiben erhalten.'))return;let n=0;for(const v of d.recipes){if(recipes.some(r=>normalize(r.name)===normalize(v.name)||(v.link&&canonical(r.link)===canonical(v.link))))continue;const r={id:id(),name:v.name,category:String(v.category||'Sonstiges'),link:/^https?:\/\//i.test(v.link||'')?v.link:'',ingredients:String(v.ingredients||''),steps:String(v.steps||''),notes:String(v.notes||''),fav:!!v.fav};recipes.push(r);familySave(r);n++}for(const x of Array.isArray(d.items)?d.items:[])if(x&&typeof x.text==='string'&&!items.some(v=>normalize(v.text)===normalize(x.text))){const restored={id:id(),text:x.text,done:!!x.done};items.push(restored);shopSave(restored)}save();render();renderItems();alert(n+' Rezepte wiederhergestellt.')}catch(e){alert('Sicherung konnte nicht gelesen werden: '+e.message)}}
 async function importMeta(f){if(!f)return;let txt=await f.text();let links=[...new Set((txt.match(/https?:[^\s"'<>\\]+/g)||[]).map(s=>s.replace(/&amp;/g,'&').replace(/[),.;]+$/,'')).filter(s=>/instagram\.com\/(p|reel|tv)\/|facebook\.com\/|fb\.watch\//i.test(s)))];let existing=new Set(recipes.map(x=>x.link));let count=0;for(let link of links){if(existing.has(link))continue;recipes.push({id:id(),name:/instagram/.test(link)?'Instagram-Rezept (prüfen)':'Facebook-Beitrag (prüfen)',category:'Sonstiges',link,ingredients:'',steps:'',notes:'Importiert – bitte prüfen, ob es ein Rezept ist.',fav:false});existing.add(link);count++}save();render();$('importResult').classList.remove('hide');$('importResult').textContent=count+' neue Beitragslinks importiert. Bitte kontrolliere die Einträge – es können auch Nicht-Rezepte enthalten sein.'}
-const API='https://qqudsvgropqcwujsbein.supabase.co/functions/v1/family-recipes';let token=localStorage.getItem('family_device')||'',code=localStorage.getItem('family_code')||'';const msg=m=>$('familyInfo').textContent=m;
+const API='https://qqudsvgropqcwujsbein.supabase.co/functions/v1/family-recipes';let pairing=false;let token=localStorage.getItem('family_device')||'',code=localStorage.getItem('family_code')||'';const msg=m=>$('familyInfo').textContent=m;
 // Durable per-record outbox. A failed request never discards a local change.
 let pending=JSON.parse(localStorage.getItem('recipe_pending_v4')||'[]'), syncing=false;
 const uid=()=>crypto.randomUUID();
@@ -57,8 +57,8 @@ const itemIDs=new Set((remote.items||[]).map(v=>v.id));
 for(const x of items){if(itemIDs.has(x.cloud_id))continue;const match=(remote.items||[]).find(v=>normalize(v.text)===normalize(x.text));if(!match)continue;const old=x.cloud_id;pending=pending.filter(p=>!(p.action==='shop-save'&&p.data.item?.id===old));x.cloud_id=match.id;x.done=match.done}
 persistQueue();save();
 }
-async function familySync(){if(!token||syncing)return;syncing=true;try{
- adoptRemoteMatches(await callFamily('list'));
+async function familySync(force=false){if(!token||syncing||(pairing&&!force))return;syncing=true;try{
+ const initial=await callFamily('list');if(initial.householdId){localStorage.setItem('family_identity',initial.householdId);$('familyIdentity').textContent='Sammlung: '+initial.householdId}adoptRemoteMatches(initial);
 
  for(const r of recipes.filter(r=>!r.cloud_id)) {r.cloud_id=uid();queue('save',{recipe:recipeRow(r)})}
  for(const x of items.filter(x=>!x.cloud_id)){x.cloud_id=uid();queue('shop-save',{item:{...x,id:x.cloud_id}})}
@@ -71,8 +71,8 @@ async function familySync(){if(!token||syncing)return;syncing=true;try{
  recipes=recipes.filter(r=>!r.cloud_id||remoteIDs.has(r.cloud_id)||dirty.has(r.cloud_id));
  for(const v of remote.recipes){if(dirty.has(v.id))continue;let r=recipes.find(r=>r.cloud_id===v.id);if(!r){r={id:id(),cloud_id:v.id};recipes.push(r)}Object.assign(r,{name:v.title,category:v.category,link:v.source_url||'',ingredients:v.ingredients,steps:v.instructions,notes:v.notes,fav:v.favorite})}
  if(Array.isArray(remote.items)){const dirtyItems=new Set(pending.filter(p=>p.action.startsWith('shop-')).map(p=>p.data.item?.id||p.data.id));items=items.filter(x=>dirtyItems.has(x.cloud_id));for(const x of remote.items)if(!dirtyItems.has(x.id))items.push({id:x.id,cloud_id:x.id,text:x.text,done:x.done})}
- save();render();renderItems();msg('Rezepte und Einkaufsliste synchronisiert.');
-}catch(e){msg('Abgleich nicht möglich: '+e.message+'. Änderungen bleiben gespeichert und werden erneut versucht.')}finally{syncing=false;familyUI()}}
+ save();render();renderItems();msg('Rezepte und Einkaufsliste synchronisiert. '+recipes.length+' Rezepte · '+new Date().toLocaleTimeString('de-DE'));return true;
+}catch(e){msg('Abgleich nicht möglich: '+e.message+'. Änderungen bleiben gespeichert und werden erneut versucht.');return false}finally{syncing=false;familyUI()}}
 const normalize=s=>String(s||'').trim().toLocaleLowerCase('de').replace(/\s+/g,' ');
 function canonical(s){try{const u=new URL(s);u.hash='';['igsh','igshid','fbclid','utm_source','utm_medium','utm_campaign'].forEach(k=>u.searchParams.delete(k));return u.href.replace(/\/$/,'')}catch(e){return s}}
 function storeRecipe(){const rid=$('rid').value;const name=$('rname').value.trim(),link=canonical($('rlink').value.trim());if(!name)return;const duplicate=recipes.find(r=>r.id!==rid&&((link&&canonical(r.link)===link)||normalize(r.name)===normalize(name)));if(duplicate&&!confirm('Ein ähnliches Rezept existiert bereits. Trotzdem speichern?'))return;
@@ -100,8 +100,20 @@ let incomingInvite='';
 familyUI();render();readInvitation();acceptSharedRecipe();if(token)familySync();if(new URLSearchParams(location.search).get('setup')==='share'){tab('account');msg('Diesen Browser einmal mit dem Familiencode eurer bestehenden Sammlung verbinden. Danach werden geteilte Beiträge automatisch abgelegt.')}
 
 
-function readInvitation(){const h=new URLSearchParams(location.hash.slice(1));const v=h.get('invite');if(!v)return;history.replaceState(null,'',location.pathname);tab('account');if(!/^[a-f0-9]{64}$/.test(v)){msg('Einladungslink ungültig.');return}if(token){msg('Dieses Gerät ist bereits verbunden. Die bestehende Verbindung bleibt erhalten.');return}incomingInvite=v;$('inviteAccept').classList.remove('hide');$('familySetup').classList.add('hide');}
-async function acceptInvitation(){const b=$('acceptInvite');b.disabled=true;try{if(token)return;const j=await callFamily('redeem',{invite:incomingInvite});token=j.deviceToken;localStorage.setItem('family_device',token);incomingInvite='';$('inviteAccept').classList.add('hide');familyUI();await familySync();msg('Verbunden. Vorhandene Rezepte werden mit eurer Sammlung zusammengeführt. Auf Android: im Browsermenü „App installieren“ wählen.')}catch(e){msg(e.message)}finally{b.disabled=false}}
+function readInvitation(){const h=new URLSearchParams(location.hash.slice(1)),v=h.get('invite');if(!v)return;history.replaceState(null,'',location.pathname);tab('account');if(!/^[a-f0-9]{64}$/.test(v)){msg('Einladungslink ungültig.');return}incomingInvite=v;$('inviteAccept').classList.remove('hide');$('familySetup').classList.add('hide');$('inviteExplanation').textContent=token?'Dieser Browser ist schon verbunden. Mit dieser Einladung kannst du ihn der Sammlung deiner Home-App zuordnen. Vorhandene Rezepte und Einkaufsartikel werden übernommen. Die bisherige Sammlung und andere Geräte bleiben bestehen.':'Dieses Gerät mit der privaten Rezeptsammlung verbinden? Lokale Rezepte bleiben erhalten.';}
+async function acceptInvitation(){const b=$('acceptInvite');b.disabled=true;try{
+const deadline=Date.now()+20000;while(syncing&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));if(syncing)throw Error('Ein Abgleich läuft noch. Bitte gleich erneut versuchen.');
+if(token&&!(await familySync()))throw Error('Die bisherige Sammlung konnte nicht gesichert abgeglichen werden. Bitte Internetverbindung prüfen.');
+pairing=true;const previous={token,code,recipes:JSON.parse(JSON.stringify(recipes)),items:JSON.parse(JSON.stringify(items)),pending:JSON.parse(JSON.stringify(pending)),identity:localStorage.getItem('family_identity'),date:new Date().toISOString()};
+// Keep a recovery snapshot before consuming an invitation or changing local credentials.
+localStorage.setItem('recipe_before_pairing_v43',JSON.stringify(previous));
+const j=await callFamily('redeem',{invite:incomingInvite});
+if(j.householdId&&j.householdId===previous.identity){msg('Bereits dieselbe Sammlung. Verbindung bestätigt.');$('inviteAccept').classList.add('hide');incomingInvite='';return}
+// New IDs prevent inserting another household's primary keys. The source stays intact.
+recipes.forEach(r=>delete r.cloud_id);items.forEach(x=>delete x.cloud_id);pending=[];persistQueue();save();
+token=j.deviceToken;code='';localStorage.setItem('family_device',token);localStorage.removeItem('family_code');localStorage.removeItem('family_identity');incomingInvite='';$('inviteAccept').classList.add('hide');familyUI();
+const ok=await familySync(true);if(ok)msg('Mit der Sammlung verbunden. '+recipes.length+' Rezepte vorhanden. Die Home-App lädt sie beim nächsten Öffnen.');
+}catch(e){msg('Verbindung nicht abgeschlossen: '+e.message)}finally{pairing=false;b.disabled=false}}
 async function makeInvitation(safari=false){
 // Open synchronously: Safari blocks windows opened after an awaited request.
 const win=safari?window.open('about:blank','_blank'):null;
