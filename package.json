@@ -1,0 +1,1 @@
+{"name":"meine-rezeptsammlung-tests","private":true,"version":"4.0.0","scripts":{"test":"node tests/e2e.cjs && node tests/pwa.cjs"},"devDependencies":{"playwright":"1.51.1"}}
