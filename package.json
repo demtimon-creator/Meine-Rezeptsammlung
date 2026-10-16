@@ -1,1 +1,1 @@
-{"name": "meine-rezeptsammlung-tests", "private": true, "version": "5.0.0", "scripts": {"test": "node tests/share-unit.cjs && node tests/drawer-e2e.cjs && node tests/pwa.cjs"}, "devDependencies": {"playwright": "1.51.1"}}
+{"name": "meine-rezeptsammlung-tests", "private": true, "version": "5.0.0", "scripts": {"test": "node tests/chefkoch-unit.mjs && node tests/share-unit.cjs && node tests/drawer-e2e.cjs && node tests/pwa.cjs && node tests/chefkoch-e2e.cjs"}, "devDependencies": {"playwright": "1.51.1"}}
