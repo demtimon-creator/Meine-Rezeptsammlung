@@ -1,9 +1,10 @@
 const deadline=setTimeout(()=>{console.error('Browser test exceeded 120 seconds');process.exit(1)},120000);deadline.unref();
 const {chromium,webkit}=require('playwright');
-const fs=require('fs'),path=require('path'),assert=require('assert');
-const root=path.resolve(__dirname,'..'),base='https://demtimon-creator.github.io/Meine-Rezeptsammlung/';
-(async()=>{for(const [name,type] of Object.entries({chromium,webkit})){const browser=await type.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
-await context.route(base+'**',async route=>{const u=new URL(route.request().url()),f=u.pathname.slice(new URL(base).pathname.length)||'index.html';if(fs.existsSync(path.join(root,f)))await route.fulfill({path:path.join(root,f),contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.json')?'application/json':f.endsWith('.webmanifest')?'application/manifest+json':undefined});else await route.continue()});
+const fs=require('fs'),path=require('path'),assert=require('assert'),http=require('http');
+const root=path.resolve(__dirname,'..'),base='http://127.0.0.1:8767/';
+const server=http.createServer((req,res)=>{let f=new URL(req.url,base).pathname;if(f==='/')f='/index.html';const file=path.join(root,f);if(!fs.existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',f.endsWith('.js')?'application/javascript':f.endsWith('.json')?'application/json':f.endsWith('.webmanifest')?'application/manifest+json':f.endsWith('.html')?'text/html':'image/png');res.end(fs.readFileSync(file))});
+(async()=>{await new Promise(r=>server.listen(8767,'127.0.0.1',r));for(const [name,type] of Object.entries({chromium,webkit})){const browser=await type.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+
 await page.goto(base);await page.getByRole('button',{name:'+ Rezept',exact:true}).click();
 await page.locator('#rname').fill('Spaghetti Eis Kuchen – Öl & „Süßes“');
 await page.locator('#recipeText').fill('Zutaten:\n200 g Mehl\n½ TL Salz\n2 Eier\nZubereitung:\nAlles verrühren.\n20 Minuten backen.');
@@ -22,4 +23,4 @@ await page.goto(base+'?text='+encodeURIComponent('https://www.facebook.com/reel/
 await page.getByRole('button',{name:'App',exact:true}).click();await page.getByRole('button',{name:'↻ Aktualisieren',exact:true}).click();await page.waitForURL(/[?&]check=/);assert.equal(await page.locator('#versionLabel').textContent(),'Geladene App-Version: 4.0');
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
 assert.deepEqual(errors,[]);console.log(name+': local CRUD, umlauts, ingredients, shopping, favorites, restart, links, update, mobile layout PASS');
-await context.close();await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});
+await context.close();await browser.close()}})().catch(e=>{console.error(e);process.exit(1)}).finally(()=>server.close());
