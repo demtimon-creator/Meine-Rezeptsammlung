@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),S=require('../share-utils.js');
+assert.deepEqual(S.parse('Zutaten:\n200 g Mehl\n½ TL Salz\n2 Eier\nZubereitung:\nAlles verrühren.'),{ingredients:['200 g Mehl','½ TL Salz','2 Eier'],steps:'Alles verrühren.'});
+assert.deepEqual(S.parse('Zutaten für 4 Portionen: 1,5 kg Kartoffeln; 2 EL Öl; Salz und Pfeffer\nZubereitung: Alles mischen.').ingredients,['1,5 kg Kartoffeln','2 EL Öl','Salz und Pfeffer']);
+for(const t of ['Video 2026 https://instagram.com/reel/ABC','Das sind 200 g Genuss!','Rezept in der Beschreibung','42 Kommentare'])assert.deepEqual(S.parse(t).ingredients,[]);
+assert.equal(S.canonical('javascript:alert(1)'),'');
+assert.equal(S.extract('https://instagram.com/reel/ABC/?igsh=abc'),'https://www.instagram.com/reel/ABC');
+assert.equal(S.canonical('https://www.instagram.com/reels/ABC/?utm_source=ig'),'https://www.instagram.com/reel/ABC');
+const input='Zutaten:\n200 g Mehl\n2 Eier\nhttps://facebook.com/reel/123?foo=a&bar=b';
+assert.equal(S.payload('', '#share='+encodeURIComponent(input)).text,input);
+assert.equal(S.payload('?text='+encodeURIComponent(input),'').url,'https://facebook.com/reel/123?foo=a&bar=b');
+assert.equal(S.payload('?text=javascript%3Aalert(1)',''),null);
+assert.deepEqual(S.parse('Zutaten:\n200 g Mehl\n20 Minuten backen').ingredients,['200 g Mehl']);
+console.log('Shared payload, URLs, quantities, sections and no-caption fallback: PASS');
