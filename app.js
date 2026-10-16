@@ -46,7 +46,20 @@ async function rotateCode(){try{const j=await callFamily('rotate');code=j.family
 async function revokeOthers(){if(!confirm('Alle anderen Geräte trennen und alten Familiencode sperren?'))return;try{await callFamily('revoke');code='';localStorage.removeItem('family_code');$('codeDisplay').textContent='';msg('Andere Geräte getrennt. Für neue Einladungen Familiencode erneuern.')}catch(e){msg(e.message)}}
 function recipeRow(r){return {id:r.cloud_id,title:r.name,category:r.category,source_url:r.link||null,ingredients:r.ingredients,instructions:r.steps,notes:r.notes,favorite:!!r.fav}}
 function familySave(r){if(!token)return Promise.resolve();r.cloud_id=r.cloud_id||uid();queue('save',{recipe:recipeRow(r)});save();return Promise.resolve()}
+function adoptRemoteMatches(remote){
+const recipeIDs=new Set(remote.recipes.map(r=>r.id));
+for(const r of recipes){const link=RecipeShare.canonical(r.link);if(!link||recipeIDs.has(r.cloud_id))continue;const match=remote.recipes.find(v=>RecipeShare.canonical(v.source_url)===link);if(!match)continue;const old=r.cloud_id;
+pending=pending.filter(p=>!(p.action==='save'&&p.data.recipe?.id===old));r.cloud_id=match.id;
+r.ingredients=[...new Map([...(match.ingredients||'').split(/\r?\n/),...(r.ingredients||'').split(/\r?\n/)].filter(v=>v.trim()).map(v=>[normalize(v),v])).values()].join('\n');
+r.name=match.title||r.name;r.category=match.category||r.category;r.steps=match.instructions||r.steps;r.notes=match.notes||r.notes;r.fav=!!(match.favorite||r.fav);queue('save',{recipe:recipeRow(r)});
+}
+const itemIDs=new Set((remote.items||[]).map(v=>v.id));
+for(const x of items){if(itemIDs.has(x.cloud_id))continue;const match=(remote.items||[]).find(v=>normalize(v.text)===normalize(x.text));if(!match)continue;const old=x.cloud_id;pending=pending.filter(p=>!(p.action==='shop-save'&&p.data.item?.id===old));x.cloud_id=match.id;x.done=match.done}
+persistQueue();save();
+}
 async function familySync(){if(!token||syncing)return;syncing=true;try{
+ adoptRemoteMatches(await callFamily('list'));
+
  for(const r of recipes.filter(r=>!r.cloud_id)) {r.cloud_id=uid();queue('save',{recipe:recipeRow(r)})}
  for(const x of items.filter(x=>!x.cloud_id)){x.cloud_id=uid();queue('shop-save',{item:{...x,id:x.cloud_id}})}
  save();
