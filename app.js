@@ -96,4 +96,17 @@ location.replace('./index.html?v='+encodeURIComponent(v.version)+'&check='+nonce
 window.addEventListener('hashchange',acceptSharedRecipe);
 window.addEventListener('online',()=>{familyUI();familySync()});window.addEventListener('offline',familyUI);document.addEventListener('visibilitychange',()=>{if(!document.hidden)familySync()});setInterval(()=>{if(!document.hidden&&navigator.onLine)familySync()},30000);
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'}).catch(()=>{}));
-familyUI();render();acceptSharedRecipe();if(token)familySync();if(new URLSearchParams(location.search).get('setup')==='share'){tab('account');msg('Diesen Browser einmal mit dem Familiencode eurer bestehenden Sammlung verbinden. Danach werden geteilte Beiträge automatisch abgelegt.')}
+let incomingInvite='';
+familyUI();render();readInvitation();acceptSharedRecipe();if(token)familySync();if(new URLSearchParams(location.search).get('setup')==='share'){tab('account');msg('Diesen Browser einmal mit dem Familiencode eurer bestehenden Sammlung verbinden. Danach werden geteilte Beiträge automatisch abgelegt.')}
+
+
+function readInvitation(){const h=new URLSearchParams(location.hash.slice(1));const v=h.get('invite');if(!v)return;history.replaceState(null,'',location.pathname);tab('account');if(!/^[a-f0-9]{64}$/.test(v)){msg('Einladungslink ungültig.');return}if(token){msg('Dieses Gerät ist bereits verbunden. Die bestehende Verbindung bleibt erhalten.');return}incomingInvite=v;$('inviteAccept').classList.remove('hide');$('familySetup').classList.add('hide');}
+async function acceptInvitation(){const b=$('acceptInvite');b.disabled=true;try{if(token)return;const j=await callFamily('redeem',{invite:incomingInvite});token=j.deviceToken;localStorage.setItem('family_device',token);incomingInvite='';$('inviteAccept').classList.add('hide');familyUI();await familySync();msg('Verbunden. Vorhandene Rezepte werden mit eurer Sammlung zusammengeführt. Auf Android: im Browsermenü „App installieren“ wählen.')}catch(e){msg(e.message)}finally{b.disabled=false}}
+async function makeInvitation(safari=false){
+// Open synchronously: Safari blocks windows opened after an awaited request.
+const win=safari?window.open('about:blank','_blank'):null;
+try{if(!token){await familyCreate();if(!token)throw Error('Sammlung konnte nicht eingerichtet werden. Bitte Internetverbindung prüfen.')}await familySync();const j=await callFamily('invite');const link=new URL('./',location.href);link.hash='invite='+j.invite;
+$('invitePanel').classList.remove('hide');$('inviteLink').href=link.href;$('inviteLink').textContent='Einladung öffnen';$('inviteExpiry').textContent='10 Minuten gültig • einmal verwendbar • nur privat weitergeben';
+const qr=qrcode(0,'M');qr.addData(link.href);qr.make();$('inviteQR').innerHTML=qr.createSvgTag({cellSize:4,margin:16,scalable:true});$('inviteQR').querySelector('svg').style.cssText='width:100%;max-width:280px;height:auto;background:white';
+if(win){win.location.replace(link.href);msg('Im geöffneten Browser einmal „Sammlung verbinden“ bestätigen.')}else if(safari){msg('Tippe auf „Einladung öffnen“ und bestätige im Browser „Sammlung verbinden“.')}
+}catch(e){if(win)win.close();msg('Einladung konnte nicht erstellt werden: '+e.message)}}

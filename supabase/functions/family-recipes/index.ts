@@ -19,9 +19,16 @@ const fc=await client.from('recipe_family_codes').insert({code_hash:await hash(f
 const dv=await client.from('recipe_devices').insert({token_hash:await hash(deviceToken),household_id:hid});if(fc.error||dv.error)throw Error('Einrichtung fehlgeschlagen');
 return reply({familyCode,deviceToken});
 }
+if(action==='redeem'){
+const invite=String(data.invite||'');if(!/^[a-f0-9]{64}$/.test(invite))return reply({error:'Einladung ungültig'},400);
+// DELETE RETURNING consumes the invitation atomically, including concurrent scans.
+const q=await client.from('recipe_family_codes').delete().eq('code_hash',await hash(invite)).eq('active',true).gt('expires_at',new Date().toISOString()).select('household_id');
+if(q.error)throw q.error;if(!q.data?.length)return reply({error:'Einladung abgelaufen oder bereits verwendet. Bitte einen neuen QR-Code anzeigen.'},403);
+const deviceToken=random();const add=await client.from('recipe_devices').insert({token_hash:await hash(deviceToken),household_id:q.data[0].household_id});if(add.error)throw add.error;return reply({deviceToken});
+}
 if(action==='join'){
 const familyCode=String(data.familyCode||'');if(!/^[a-f0-9]{64}$/.test(familyCode))return reply({error:'Ungültiger Familiencode'},400);
-const {data:family}=await client.from('recipe_family_codes').select('household_id').eq('code_hash',await hash(familyCode)).eq('active',true).maybeSingle();
+const {data:family}=await client.from('recipe_family_codes').select('household_id').eq('code_hash',await hash(familyCode)).eq('active',true).is('expires_at',null).maybeSingle();
 if(!family)return reply({error:'Code nicht gefunden'},403);
 const deviceToken=random();const add=await client.from('recipe_devices').insert({token_hash:await hash(deviceToken),household_id:family.household_id});if(add.error)throw add.error;
 return reply({deviceToken});
@@ -29,6 +36,9 @@ return reply({deviceToken});
 const token=String(data.deviceToken||'');if(!/^[a-f0-9]{64}$/.test(token))return reply({error:'Gerät nicht verbunden'},401);
 const {data:device}=await client.from('recipe_devices').select('household_id').eq('token_hash',await hash(token)).maybeSingle();if(!device)return reply({error:'Zugang ungültig'},401);
 const family=device.household_id;
+if(action==='invite'){
+const invite=random(),expiresAt=new Date(Date.now()+600000).toISOString();const q=await client.from('recipe_family_codes').insert({code_hash:await hash(invite),household_id:family,expires_at:expiresAt});if(q.error)throw q.error;return reply({invite,expiresAt});
+}
 if(action==='list'){const q=await client.from('shared_recipes').select('*').eq('household_id',family).order('updated_at',{ascending:false});if(q.error)throw q.error;const shop=await client.from('recipe_shopping').select('id,text,done,updated_at').eq('household_id',family).order('updated_at');if(shop.error)throw shop.error;return reply({recipes:q.data,items:shop.data})}
 if(action==='delete'){const id=String(data.id||'');const q=await client.from('shared_recipes').delete().eq('id',id).eq('household_id',family);if(q.error)throw q.error;return reply({ok:true})}
 

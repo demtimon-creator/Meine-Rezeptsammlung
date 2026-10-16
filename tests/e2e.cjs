@@ -20,7 +20,7 @@ await page.getByRole('button',{name:'Import',exact:true}).click();await page.loc
 
 await page.getByRole('button',{name:'Import',exact:true}).click();await page.locator('#quickLink').fill('https://www.instagram.com/reel/TEST/?igsh=abc');await page.getByRole('button',{name:'Link als Rezept speichern',exact:true}).click();assert.equal(await page.locator('#rlink').inputValue(),'https://www.instagram.com/reel/TEST');await page.getByRole('button',{name:'Abbrechen',exact:true}).click();
 await page.goto(base+'?text='+encodeURIComponent('https://www.facebook.com/reel/12345'));assert.equal(await page.locator('.recipe').count(),1);await page.getByRole('button',{name:'Öffnen',exact:true}).click();assert.equal(await page.locator('#rlink').inputValue(),'https://www.facebook.com/reel/12345');await page.getByRole('button',{name:'Abbrechen',exact:true}).click();
-await page.getByRole('button',{name:'App',exact:true}).click();await page.getByRole('button',{name:'↻ Aktualisieren',exact:true}).click();await page.waitForURL(/[?&]check=/);assert.equal(await page.locator('#versionLabel').textContent(),'Geladene App-Version: 4.1');
+await page.getByRole('button',{name:'App',exact:true}).click();await page.getByRole('button',{name:'↻ Aktualisieren',exact:true}).click();await page.waitForURL(/[?&]check=/);assert.equal(await page.locator('#versionLabel').textContent(),'Geladene App-Version: 4.2');
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
 assert.deepEqual(errors,[]);console.log(name+': local CRUD, umlauts, ingredients, shopping, favorites, restart, links, update, mobile layout PASS');
 await context.close();await browser.close()}})().catch(e=>{console.error(e);process.exit(1)}).finally(()=>server.close());
