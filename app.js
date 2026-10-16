@@ -31,7 +31,7 @@ function download(name,txt,type){let a=document.createElement('a');a.href=URL.cr
 function backup(){download('meine-rezepte-sicherung.json',JSON.stringify({recipes,items,version:2},null,2),'application/json')}
 async function restoreFile(f){if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.recipes)||d.recipes.some(r=>!r||typeof r.name!=='string'||!r.name.trim()))throw Error('Ungültige Rezeptliste');if(!confirm('Sicherung mit vorhandenen Daten zusammenführen? Bestehende Rezepte bleiben erhalten.'))return;let n=0;for(const v of d.recipes){if(recipes.some(r=>normalize(r.name)===normalize(v.name)||(v.link&&canonical(r.link)===canonical(v.link))))continue;const r={id:id(),name:v.name,category:String(v.category||'Sonstiges'),link:/^https?:\/\//i.test(v.link||'')?v.link:'',ingredients:String(v.ingredients||''),steps:String(v.steps||''),notes:String(v.notes||''),fav:!!v.fav};recipes.push(r);familySave(r);n++}for(const x of Array.isArray(d.items)?d.items:[])if(x&&typeof x.text==='string'&&!items.some(v=>normalize(v.text)===normalize(x.text))){const restored={id:id(),text:x.text,done:!!x.done};items.push(restored);shopSave(restored)}save();render();renderItems();alert(n+' Rezepte wiederhergestellt.')}catch(e){alert('Sicherung konnte nicht gelesen werden: '+e.message)}}
 async function importMeta(f){if(!f)return;let txt=await f.text();let links=[...new Set((txt.match(/https?:[^\s"'<>\\]+/g)||[]).map(s=>s.replace(/&amp;/g,'&').replace(/[),.;]+$/,'')).filter(s=>/instagram\.com\/(p|reel|tv)\/|facebook\.com\/|fb\.watch\//i.test(s)))];let existing=new Set(recipes.map(x=>x.link));let count=0;for(let link of links){if(existing.has(link))continue;recipes.push({id:id(),name:/instagram/.test(link)?'Instagram-Rezept (prüfen)':'Facebook-Beitrag (prüfen)',category:'Sonstiges',link,ingredients:'',steps:'',notes:'Importiert – bitte prüfen, ob es ein Rezept ist.',fav:false});existing.add(link);count++}save();render();$('importResult').classList.remove('hide');$('importResult').textContent=count+' neue Beitragslinks importiert. Bitte kontrolliere die Einträge – es können auch Nicht-Rezepte enthalten sein.'}
-const API='https://qqudsvgropqcwujsbein.supabase.co/functions/v1/family-recipes';let token=localStorage.getItem('family_device')||'',code=localStorage.getItem('family_code')||'';const msg=m=>$('familyInfo').textContent=m;
+const API='https://qqudsvgropqcwujsbein.supabase.co/functions/v1/family-recipes';let pairing=false;let token=localStorage.getItem('family_device')||'',code=localStorage.getItem('family_code')||'';const msg=m=>$('familyInfo').textContent=m;
 // Durable per-record outbox. A failed request never discards a local change.
 let pending=JSON.parse(localStorage.getItem('recipe_pending_v4')||'[]'), syncing=false;
 const uid=()=>crypto.randomUUID();
@@ -57,7 +57,7 @@ const itemIDs=new Set((remote.items||[]).map(v=>v.id));
 for(const x of items){if(itemIDs.has(x.cloud_id))continue;const match=(remote.items||[]).find(v=>normalize(v.text)===normalize(x.text));if(!match)continue;const old=x.cloud_id;pending=pending.filter(p=>!(p.action==='shop-save'&&p.data.item?.id===old));x.cloud_id=match.id;x.done=match.done}
 persistQueue();save();
 }
-async function familySync(){if(!token||syncing)return;syncing=true;try{
+async function familySync(force=false){if(!token||syncing||(pairing&&!force))return;syncing=true;try{
  const initial=await callFamily('list');if(initial.householdId){localStorage.setItem('family_identity',initial.householdId);$('familyIdentity').textContent='Sammlung: '+initial.householdId}adoptRemoteMatches(initial);
 
  for(const r of recipes.filter(r=>!r.cloud_id)) {r.cloud_id=uid();queue('save',{recipe:recipeRow(r)})}
@@ -104,7 +104,7 @@ function readInvitation(){const h=new URLSearchParams(location.hash.slice(1)),v=
 async function acceptInvitation(){const b=$('acceptInvite');b.disabled=true;try{
 const deadline=Date.now()+20000;while(syncing&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));if(syncing)throw Error('Ein Abgleich läuft noch. Bitte gleich erneut versuchen.');
 if(token&&!(await familySync()))throw Error('Die bisherige Sammlung konnte nicht gesichert abgeglichen werden. Bitte Internetverbindung prüfen.');
-const previous={token,code,recipes:JSON.parse(JSON.stringify(recipes)),items:JSON.parse(JSON.stringify(items)),pending:JSON.parse(JSON.stringify(pending)),identity:localStorage.getItem('family_identity'),date:new Date().toISOString()};
+pairing=true;const previous={token,code,recipes:JSON.parse(JSON.stringify(recipes)),items:JSON.parse(JSON.stringify(items)),pending:JSON.parse(JSON.stringify(pending)),identity:localStorage.getItem('family_identity'),date:new Date().toISOString()};
 // Keep a recovery snapshot before consuming an invitation or changing local credentials.
 localStorage.setItem('recipe_before_pairing_v43',JSON.stringify(previous));
 const j=await callFamily('redeem',{invite:incomingInvite});
@@ -112,8 +112,8 @@ if(j.householdId&&j.householdId===previous.identity){msg('Bereits dieselbe Samml
 // New IDs prevent inserting another household's primary keys. The source stays intact.
 recipes.forEach(r=>delete r.cloud_id);items.forEach(x=>delete x.cloud_id);pending=[];persistQueue();save();
 token=j.deviceToken;code='';localStorage.setItem('family_device',token);localStorage.removeItem('family_code');localStorage.removeItem('family_identity');incomingInvite='';$('inviteAccept').classList.add('hide');familyUI();
-const ok=await familySync();if(ok)msg('Mit der Sammlung verbunden. '+recipes.length+' Rezepte vorhanden. Die Home-App lädt sie beim nächsten Öffnen.');
-}catch(e){msg('Verbindung nicht abgeschlossen: '+e.message)}finally{b.disabled=false}}
+const ok=await familySync(true);if(ok)msg('Mit der Sammlung verbunden. '+recipes.length+' Rezepte vorhanden. Die Home-App lädt sie beim nächsten Öffnen.');
+}catch(e){msg('Verbindung nicht abgeschlossen: '+e.message)}finally{pairing=false;b.disabled=false}}
 async function makeInvitation(safari=false){
 // Open synchronously: Safari blocks windows opened after an awaited request.
 const win=safari?window.open('about:blank','_blank'):null;
