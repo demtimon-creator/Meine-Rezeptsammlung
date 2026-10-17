@@ -16,7 +16,7 @@ assert.equal(photos.url(image+'?tracking=test#fragment'),image);
 if(process.env.CHEFKOCH_HTML){const r=extractRecipe(readFileSync(process.env.CHEFKOCH_HTML,'utf8'),'https://www.chefkoch.de/rezepte/141811061122586/Nudelsalat-Klassik.html');assert(r.imageUrl?.includes('/rezepte/141811061122586/bilder/'));console.log('Provided real recipe: dish photograph linked by JSON-LD ImageObject PASS');}
 console.log('Photos: direct URLs, ImageObjects, graph references, missing images, cycles, unsafe hosts/protocols, credentials and tracking removal PASS');
 
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHTsAAAAASUVORK5CYII=','base64');
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGO8szOPgYGBiYGBgYGBAQAYvAIHTnHIsAAAAABJRU5ErkJggg==','base64');
 assert.equal((await loadPhoto(image,async(u,o)=>{assert.equal(o.redirect,'error');return new Response(png)})).contentType,'image/png');
 await assert.rejects(loadPhoto('https://example.com/x.jpg',async()=>new Response(png)));
 await assert.rejects(loadPhoto(image,async()=>new Response('<html>not an image</html>')));
