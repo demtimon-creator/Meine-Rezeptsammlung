@@ -68,3 +68,10 @@ export async function loadRecipe(value, fetcher=fetch) {
   } catch(e) { if(e.name==='AbortError')throw Error('Chefkoch antwortet nicht rechtzeitig. Bitte später erneut versuchen.');throw e; }
   finally {clearTimeout(timer);}
 }
+
+export async function loadPhoto(value,fetcher=fetch){
+ let url;try{const u=new URL(value);if(u.protocol!=='https:'||u.hostname!=='img.chefkoch-cdn.de'||u.username||u.password||u.port||!/^\/rezepte\/\d+\/bilder\/\d+\/[^?#]+\.(?:jpe?g|png|webp|avif)$/i.test(u.pathname)||u.href.length>2000)throw Error();u.search='';u.hash='';url=u.href;}catch{throw Error('Ungültiges Gerichtsfoto.');}
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ try{const res=await fetcher(url,{redirect:'error',signal:controller.signal,headers:{Accept:'image/*'}});if(!res.ok)throw Error('Gerichtsfoto ist gerade nicht erreichbar.');const reader=res.body.getReader(),chunks=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2000000)throw Error('Gerichtsfoto ist zu groß.');chunks.push(value)}}finally{await reader.cancel().catch(()=>{})}const bytes=new Uint8Array(size);let offset=0;for(const part of chunks){bytes.set(part,offset);offset+=part.length}const head=new TextDecoder('latin1').decode(bytes.slice(0,16));const contentType=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes[0]===137&&head.slice(1,4)==='PNG'?'image/png':head.startsWith('RIFF')&&head.slice(8,12)==='WEBP'?'image/webp':/^ftypavi[fs]/.test(head.slice(4))?'image/avif':'';if(!contentType)throw Error('Die Quelle lieferte kein gültiges Gerichtsfoto.');return {bytes,contentType};}
+ catch(e){if(e.name==='AbortError')throw Error('Gerichtsfoto antwortet nicht rechtzeitig.');throw e;}finally{clearTimeout(timer)}
+}

@@ -1,6 +1,6 @@
 // Ingredient extraction endpoint; authenticates existing device tokens. Does not write to any database table.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { loadRecipe } from './extract.mjs';
+import { loadRecipe, loadPhoto } from './extract.mjs';
 const client=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const headers={'Access-Control-Allow-Origin':'https://demtimon-creator.github.io','Access-Control-Allow-Headers':'content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
@@ -16,6 +16,7 @@ Deno.serve(async req=>{
     const {data:device,error}=await client.from('recipe_devices').select('household_id').eq('token_hash',hash).maybeSingle();
     if(error)return reply({error:'Zugang konnte nicht geprüft werden.'},503);
     if(!device)return reply({error:'Bitte zuerst bei eurer Schublade anmelden.'},401);
+    if(data.action==='photo'){const photo=await loadPhoto(String(data.imageUrl||''));return new Response(photo.bytes,{headers:{...headers,'Content-Type':photo.contentType,'Cache-Control':'private, max-age=600'}});}
     return reply(await loadRecipe(String(data.url||'')));
   }catch(e){return reply({error:e instanceof SyntaxError?'Ungültige Anfrage.':e.message||'Zutaten konnten nicht geladen werden.'},422);}
 });

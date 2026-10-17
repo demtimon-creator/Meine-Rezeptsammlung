@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
-import {extractRecipe} from '../supabase/functions/chefkoch-import/extract.mjs';
+import {extractRecipe,loadPhoto} from '../supabase/functions/chefkoch-import/extract.mjs';
 const require=createRequire(import.meta.url),photos=require('../photos.js');
 const source='https://www.chefkoch.de/rezepte/123456/Test.html',image='https://img.chefkoch-cdn.de/rezepte/123456/bilder/987654/crop-960x540/test.jpg';
 const recipe={'@type':'Recipe',name:'Test',recipeIngredient:['200 g Reis'],recipeInstructions:'Kochen.'};
@@ -15,3 +15,11 @@ for(const bad of ['javascript:alert(1)','data:image/svg+xml,xxx','http://img.che
 assert.equal(photos.url(image+'?tracking=test#fragment'),image);
 if(process.env.CHEFKOCH_HTML){const r=extractRecipe(readFileSync(process.env.CHEFKOCH_HTML,'utf8'),'https://www.chefkoch.de/rezepte/141811061122586/Nudelsalat-Klassik.html');assert(r.imageUrl?.includes('/rezepte/141811061122586/bilder/'));console.log('Provided real recipe: dish photograph linked by JSON-LD ImageObject PASS');}
 console.log('Photos: direct URLs, ImageObjects, graph references, missing images, cycles, unsafe hosts/protocols, credentials and tracking removal PASS');
+
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHTsAAAAASUVORK5CYII=','base64');
+assert.equal((await loadPhoto(image,async(u,o)=>{assert.equal(o.redirect,'error');return new Response(png)})).contentType,'image/png');
+await assert.rejects(loadPhoto('https://example.com/x.jpg',async()=>new Response(png)));
+await assert.rejects(loadPhoto(image,async()=>new Response('<html>not an image</html>')));
+await assert.rejects(loadPhoto(image,async()=>new Response(png,{status:403})));
+await assert.rejects(loadPhoto(image,async()=>new Response(new Uint8Array(2000001))));
+console.log('Authenticated photo delivery helper: binary format validation, target allowlist, redirect prohibition, upstream failure and byte limit PASS');
