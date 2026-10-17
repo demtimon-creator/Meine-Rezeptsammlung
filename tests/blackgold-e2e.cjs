@@ -29,6 +29,7 @@ const server=http.createServer((req,res)=>{const file=path.join(root,new URL(req
   function lum(s){const c=rgb(s).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4});return c[0]*.2126+c[1]*.7152+c[2]*.0722}
   return [...document.querySelectorAll('button,input,.contentBadge')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).map(e=>{let b=e;while(b&&getComputedStyle(b).backgroundColor==='rgba(0, 0, 0, 0)')b=b.parentElement;const bg=b?getComputedStyle(b).backgroundColor:'rgb(16,16,15)',fg=getComputedStyle(e).color,a=lum(bg),z=lum(fg);return (Math.max(a,z)+.05)/(Math.min(a,z)+.05)});
  });assert(contrast.every(c=>c>=4.5),JSON.stringify(contrast));assert.equal(await second.locator('html').evaluate(e=>getComputedStyle(e).colorScheme),'dark');
+ if(engine.name()==='chromium')console.log('GOLD_VISUAL='+(await second.screenshot({type:'jpeg',quality:55})).toString('base64'));
  console.log(engine.name()+': black/gold contrast, portrait/landscape no overflow, video/link-only labels, complete/partial states and full instruction import/sync PASS');
  console.log(engine.name()+': ingredient import preview/save, name/steps/notes preserved, second-device sync, selected shopping quantities, overwrite cancellation, network/parser failure preserves data PASS');
  }finally{await browser.close()}
