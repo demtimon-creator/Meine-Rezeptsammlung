@@ -17,6 +17,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test
+      - name: Live portions verification
+        if: github.ref == 'refs/heads/feature/shopping-portions'
+        run: node tests/portions-live.cjs
       - name: Live Chefkoch import verification
         if: github.ref == 'refs/heads/feature/chefkoch-ingredients-test'
         run: node tests/chefkoch-live.cjs
