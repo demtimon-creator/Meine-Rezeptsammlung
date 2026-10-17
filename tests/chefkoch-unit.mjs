@@ -16,3 +16,12 @@ await assert.rejects(loadRecipe(url,async()=>new Response('blocked',{status:403,
 await assert.rejects(loadRecipe(url,async()=>new Response('x'.repeat(2000001),{headers:{'content-type':'text/html'}})));
 if(process.env.CHEFKOCH_HTML){const real=extractRecipe(readFileSync(process.env.CHEFKOCH_HTML,'utf8'),'https://www.chefkoch.de/rezepte/141811061122586/Nudelsalat-Klassik.html');assert.equal(real.ingredients.length,10);assert.equal(real.servings,'6 Portionen');assert.equal(real.ingredients[0],'500 g Nudeln (Spiralnudeln)');assert.equal(real.ingredients.at(-1),'Gurkenflüssigkeit');console.log('Provided Chefkoch page: 10 ingredients, quantities, servings, canonical URL PASS');}
 console.log('Chefkoch structured data, graph/array/mainEntity, umlauts, quantities, invalid input, SSRF restrictions, blocked page, size limit PASS');
+
+for(const [value,expected] of [
+ ['Einfach umrühren.','Einfach umrühren.'],
+ [['Schneiden.','Kochen.'],'Schneiden.\n\nKochen.'],
+ [[{'@type':'HowToSection',name:'Zubereitung',itemListElement:[{'@type':'HowToStep',text:'<b>Öl</b> erhitzen.'},{'@type':'HowToStep',text:'Gemüse &amp; Nudeln zugeben.'}]}],'Öl erhitzen.\n\nGemüse & Nudeln zugeben.'],
+ [undefined,''],[{'@type':'HowToStep',text:'A'.repeat(1800)},'A'.repeat(1800)]
+])assert.equal(extractRecipe(html({...recipe,recipeInstructions:value}),url).steps,expected);
+assert.throws(()=>extractRecipe(html({...recipe,recipeInstructions:'A'.repeat(25001)}),url));
+console.log('Instructions: strings, step arrays, nested sections, HTML/entities, missing steps and length bounds PASS');

@@ -1,5 +1,5 @@
-const CACHE='recipe-v4-5.3',BASE=new URL('./',self.location).href;
-self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(['./','./index.html','./app.js?v=5.3','./portions.js?v=5.3','./share-utils.js?v=5.3','./vendor/qrcode.js','./icon-180.png','./manifest.webmanifest']);await self.skipWaiting()})()));
+const CACHE='recipe-v4-5.4',BASE=new URL('./',self.location).href;
+self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(['./','./index.html','./app.js?v=5.4','./portions.js?v=5.4','./share-utils.js?v=5.4','./vendor/qrcode.js','./icon-180.png','./manifest.webmanifest']);await self.skipWaiting()})()));
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if((k.startsWith('recipe-v4-')||k.startsWith('rezepte-iphone-'))&&k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||!u.href.startsWith(BASE))return;
 if(u.pathname.endsWith('/version.json')||(u.searchParams.has('check')&&e.request.mode!=='navigate')){e.respondWith(fetch(e.request,{cache:'no-store'}));return}
