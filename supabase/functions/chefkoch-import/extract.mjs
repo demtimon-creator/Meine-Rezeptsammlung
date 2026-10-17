@@ -4,13 +4,27 @@ export function chefkochURL(value) {
   if (u.protocol !== 'https:' || !['chefkoch.de','www.chefkoch.de'].includes(u.hostname) || u.port || u.username || u.password || !/^\/rezepte\/\d+\/[\w%-]+\.html$/.test(u.pathname)) throw Error('Bitte einen Chefkoch-Rezeptlink einfügen.');
   return 'https://www.chefkoch.de' + u.pathname;
 }
-function clean(value) {
+function clean(value,limit=1000) {
   return String(value || '').replace(/<[^>]*>/g,' ').replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi, (all,key) => {
     const named = {amp:'&',quot:'"',apos:"'",lt:'<',gt:'>',nbsp:' '};
     if(key[0]!=='#') return named[key.toLowerCase()] || all;
     const code = key[1].toLowerCase()==='x'?parseInt(key.slice(2),16):parseInt(key.slice(1),10);
     return code>0 && code<=0x10ffff?String.fromCodePoint(code):'';
-  }).replace(/\s+/g,' ').trim().slice(0,1000);
+  }).replace(/\s+/g,' ').trim().slice(0,limit);
+}
+function instructions(value) {
+  const parts=[];
+  function walk(v,depth=0){
+    if(!v||depth>15)return;
+    if(Array.isArray(v)){v.forEach(x=>walk(x,depth+1));return;}
+    if(typeof v==='string'){const text=clean(v,25001);if(text)parts.push(text);return;}
+    if(typeof v!=='object')return;
+    if(v.itemListElement){walk(v.itemListElement,depth+1);return;}
+    if(typeof v.text==='string')walk(v.text,depth+1);
+  }
+  walk(value);const steps=parts.join('\n\n');
+  if(steps.length>25000)throw Error('Die Zubereitung ist zu lang für eine sichere Übernahme.');
+  return steps;
 }
 export function extractRecipe(html, source) {
   const sourceUrl=chefkochURL(source), candidates=[];
@@ -28,9 +42,9 @@ export function extractRecipe(html, source) {
   }
   const r=candidates.find(r=>Array.isArray(r.recipeIngredient)&&r.recipeIngredient.length);
   if(!r) throw Error('Keine auslesbare Zutatenliste gefunden. Der gespeicherte Link bleibt erhalten; Zutaten können weiterhin manuell ergänzt werden.');
-  const ingredients=r.recipeIngredient.filter(x=>typeof x==='string').map(clean).filter(Boolean);
+  const ingredients=r.recipeIngredient.filter(x=>typeof x==='string').map(x=>clean(x)).filter(Boolean);
   if(!ingredients.length || ingredients.length>100) throw Error('Zutatenliste konnte nicht sicher erkannt werden.');
-  return {name:clean(r.name).slice(0,180),ingredients,servings:clean([r.recipeYield].flat().filter(Boolean).at(-1)),sourceUrl};
+  return {name:clean(r.name).slice(0,180),ingredients,servings:clean([r.recipeYield].flat().filter(Boolean).at(-1)),steps:instructions(r.recipeInstructions),sourceUrl};
 }
 export async function loadRecipe(value, fetcher=fetch) {
   const url=chefkochURL(value),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
