@@ -17,6 +17,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test
+      - name: Live photos verification
+        if: github.ref == 'refs/heads/feature/recipe-photos'
+        run: node tests/photos-live.cjs
       - name: Live instructions verification
         if: github.ref == 'refs/heads/feature/black-gold-instructions'
         run: node tests/instructions-live.cjs

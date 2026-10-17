@@ -27,11 +27,12 @@ function instructions(value) {
   return steps;
 }
 export function extractRecipe(html, source) {
-  const sourceUrl=chefkochURL(source), candidates=[];
+  const sourceUrl=chefkochURL(source), candidates=[], nodes=new Map();
   function visit(v, depth=0) {
     if(!v || depth>15) return;
     if(Array.isArray(v)) return v.forEach(x=>visit(x,depth+1));
     if(typeof v!=='object') return;
+    if(typeof v['@id']==='string')nodes.set(v['@id'],v);
     if([v['@type']].flat().some(t=>t==='Recipe'||t==='https://schema.org/Recipe')) candidates.push(v);
     if(v['@graph']) visit(v['@graph'],depth+1);
     if(v.mainEntity) visit(v.mainEntity,depth+1);
@@ -44,7 +45,15 @@ export function extractRecipe(html, source) {
   if(!r) throw Error('Keine auslesbare Zutatenliste gefunden. Der gespeicherte Link bleibt erhalten; Zutaten können weiterhin manuell ergänzt werden.');
   const ingredients=r.recipeIngredient.filter(x=>typeof x==='string').map(x=>clean(x)).filter(Boolean);
   if(!ingredients.length || ingredients.length>100) throw Error('Zutatenliste konnte nicht sicher erkannt werden.');
-  return {name:clean(r.name).slice(0,180),ingredients,servings:clean([r.recipeYield].flat().filter(Boolean).at(-1)),steps:instructions(r.recipeInstructions),sourceUrl};
+  function photo(value,depth=0){
+    if(!value||depth>8)return null;
+    if(Array.isArray(value)){for(const x of value){const found=photo(x,depth+1);if(found)return found;}return null;}
+    if(typeof value==='object'){return photo(value.contentUrl||value.url,depth+1)||photo(nodes.get(value['@id']),depth+1);}
+    if(typeof value!=='string')return null;
+    if(nodes.has(value))return photo(nodes.get(value),depth+1);
+    try{const u=new URL(value);if(u.protocol!=='https:'||u.hostname!=='img.chefkoch-cdn.de'||u.username||u.password||u.port||!/^\/rezepte\/\d+\/bilder\/\d+\/[^?#]+\.(?:jpe?g|png|webp|avif)$/i.test(u.pathname))return null;u.search='';u.hash='';return u.href.length<=2000?u.href:null;}catch{return null;}
+  }
+  return {name:clean(r.name).slice(0,180),ingredients,servings:clean([r.recipeYield].flat().filter(Boolean).at(-1)),steps:instructions(r.recipeInstructions),imageUrl:photo(r.image),sourceUrl};
 }
 export async function loadRecipe(value, fetcher=fetch) {
   const url=chefkochURL(value),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
@@ -58,4 +67,11 @@ export async function loadRecipe(value, fetcher=fetch) {
     return extractRecipe(new TextDecoder().decode(bytes),url);
   } catch(e) { if(e.name==='AbortError')throw Error('Chefkoch antwortet nicht rechtzeitig. Bitte später erneut versuchen.');throw e; }
   finally {clearTimeout(timer);}
+}
+
+export async function loadPhoto(value,fetcher=fetch){
+ let url;try{const u=new URL(value);if(u.protocol!=='https:'||u.hostname!=='img.chefkoch-cdn.de'||u.username||u.password||u.port||!/^\/rezepte\/\d+\/bilder\/\d+\/[^?#]+\.(?:jpe?g|png|webp|avif)$/i.test(u.pathname)||u.href.length>2000)throw Error();u.search='';u.hash='';url=u.href;}catch{throw Error('Ungültiges Gerichtsfoto.');}
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ try{const res=await fetcher(url,{redirect:'error',signal:controller.signal,headers:{Accept:'image/*'}});if(!res.ok)throw Error('Gerichtsfoto ist gerade nicht erreichbar.');const reader=res.body.getReader(),chunks=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2000000)throw Error('Gerichtsfoto ist zu groß.');chunks.push(value)}}finally{await reader.cancel().catch(()=>{})}const bytes=new Uint8Array(size);let offset=0;for(const part of chunks){bytes.set(part,offset);offset+=part.length}const head=new TextDecoder('latin1').decode(bytes.slice(0,16));const contentType=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes[0]===137&&head.slice(1,4)==='PNG'?'image/png':head.startsWith('RIFF')&&head.slice(8,12)==='WEBP'?'image/webp':/^ftypavi[fs]/.test(head.slice(4))?'image/avif':'';if(!contentType)throw Error('Die Quelle lieferte kein gültiges Gerichtsfoto.');return {bytes,contentType};}
+ catch(e){if(e.name==='AbortError')throw Error('Gerichtsfoto antwortet nicht rechtzeitig.');throw e;}finally{clearTimeout(timer)}
 }
